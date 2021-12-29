@@ -1,0 +1,19 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+### ====== Services ====== ###
+services:
+#### ====== helloworld-http ====== ####
+  helloworld:
+    image: strm/helloworld-http
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.helloworld-loadbalancer-test.rule=Host(`helloworld-demo.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.helloworld-loadbalancer-test.entrypoints=${WEB_ENTRYPOINT_NAME}"
+      - "traefik.http.services.helloworld-loadbalancer-test.loadbalancer.server.port=80"
+
+# 使用 `docker-compose scale hellworld=<number> 增減後台服務數量 來測試 traefik 的 load balancer`

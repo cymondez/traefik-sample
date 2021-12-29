@@ -1,0 +1,5 @@
+.env
+*/**/*_data
+*/**/acme.json
+
+traefik/traefik-proxy/acme.json

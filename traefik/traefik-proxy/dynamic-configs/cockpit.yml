@@ -1,0 +1,14 @@
+http:
+  routers:
+    cockpit:
+      rule: Host(`server-manager.{{env "HOST_DOMAIN"}}`)
+      service: cockpit
+      entryPoints:
+        - {{env "WEB_SECURE_ENTRYPOINT_NAME"}}
+      tls:
+        certResolver: {{env "TRAEFIK_CERTRESOLVER_NAME"}}
+  services:
+    cockpit:
+      loadBalancer:
+        servers:
+          - url: https://host.docker.internal:9090/

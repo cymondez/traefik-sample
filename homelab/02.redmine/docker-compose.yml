@@ -1,0 +1,51 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+  postgresql:
+    image: sameersbn/postgresql 
+    container_name: postgresql-redmine
+    restart: unless-stopped
+    environment:
+      - DB_USER=redmine
+      - DB_PASS=password
+      - DB_NAME=redmine_production
+    ports:
+      - 5432
+    volumes:
+      - $PWD/postgresql_data:/var/lib/postgresql
+
+   
+  redmine:
+    image: sameersbn/redmine
+    container_name: redmine
+    restart: always
+    links:
+      - postgresql
+    environment:
+      - DB_ADAPTER=postgresql
+      - DB_HOST=postgresql
+      - DB_PORT=5432
+      - DB_USER=redmine
+      - DB_PASS=password
+      - DB_NAME=redmine_production
+      - REDMINE_PORT=80
+
+    volumes:
+      - ./redmine_data:/home/redmine/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.redmine-web.rule=Host(`redmine.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.redmine-web.entrypoints=${WEB_ENTRYPOINT_NAME}"
+    
+      - "traefik.http.routers.redmine-web.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      - "traefik.http.routers.redmine.rule=Host(`redmine.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.redmine.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.redmine.tls=true"
+      - "traefik.http.routers.redmine.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"

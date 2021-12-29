@@ -1,0 +1,36 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+
+  portainer:
+    image: portainer/portainer-ce
+    container_name: portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer_data:/data:rw
+    labels:
+      - "traefik.enable=true"
+      # http routing
+      - "traefik.http.routers.portainer-web.rule=Host(`portainer.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.portainer-web.entrypoints=${WEB_ENTRYPOINT_NAME}"
+    
+      # http redirect to https
+      - "traefik.http.routers.portainer-web.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      # https routing
+      - "traefik.http.routers.portainer.rule=Host(`portainer.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.portainer.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      # use SSL and set let's encripts resolver
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.routers.portainer.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      # service loadbalancer port
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+

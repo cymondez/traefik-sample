@@ -1,0 +1,48 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+### ====== Services ====== ###
+services:
+
+  # Error Pages Provide Service ，針對 Traefik 路由失敗時的錯誤顯示
+  errorservice:
+    image: tarampampam/error-pages:2.2.0
+    restart: unless-stopped
+    environment:
+      TEMPLATE_NAME: ${TRAEFIK_ERRORPAGE_THEME}
+    labels:
+      - "traefik.enable=true"
+
+      # 路由規則為 所有找不到的規則都會導向此路由，故規則 為匹配所有路由且priority建議 < 10
+      # http 路由
+      - "traefik.http.routers.error-pages-router-web.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.error-pages-router-web.priority=1"
+      - "traefik.http.routers.error-pages-router-web.entrypoints=${WEB_ENTRYPOINT_NAME}"
+      
+      # 引用 http-to-https middleware (定義於 traefik docker-compose.yml traefik label)
+      # - "traefik.http.routers.error-pages-router-web.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}@docker"
+
+      # https 路由
+      - "traefik.http.routers.error-pages-router.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.error-pages-router.priority=1"
+      - "traefik.http.routers.error-pages-router.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.error-pages-router.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+      - "traefik.http.routers.error-pages-router.tls.domains[0].main=${HOST_DOMAIN}"
+      - "traefik.http.routers.error-pages-router.tls.domains[0].sans=*.${HOST_DOMAIN}"
+
+      # 設定路由導向 error-page-service
+      - "traefik.http.routers.error-pages-router-web.middlewares=${TRAEFIK_ERRORPAGE_MIDDLEWARE_NAME}@docker"
+      - "traefik.http.routers.error-pages-router.middlewares=${TRAEFIK_ERRORPAGE_MIDDLEWARE_NAME}@docker"
+      - "traefik.http.services.error-pages-service.loadbalancer.server.port=8080"
+      
+      # "errors" middleware settings
+      # traefik errors middleware 不會攜帶 response body 
+      # 不要套用在 RESTful api service 路由，會攔截到400~499的錯誤，造成api無法正常運作
+      - "traefik.http.middlewares.${TRAEFIK_ERRORPAGE_MIDDLEWARE_NAME}.errors.status=400-599" 
+      - "traefik.http.middlewares.${TRAEFIK_ERRORPAGE_MIDDLEWARE_NAME}.errors.service=error-pages-service@docker"
+      - "traefik.http.middlewares.${TRAEFIK_ERRORPAGE_MIDDLEWARE_NAME}.errors.query=/{status}.html"

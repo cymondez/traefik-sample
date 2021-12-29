@@ -1,0 +1,67 @@
+version: '3.7'
+
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+  server:
+    image: gitea/gitea
+    container_name: git-server
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+
+      - ROOT_URL=https://gitea.${HOST_DOMAIN}
+
+      - DB_TYPE=postgres
+      - DB_HOST=db:5432
+      - DB_NAME=gitea
+      - DB_USER=gitea
+      - DB_PASSWD=gitea
+    restart: unless-stopped
+
+    volumes:
+      - ./gitea_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+    depends_on:
+      - db
+    labels:
+
+      - "traefik.enable=true"
+  
+      - "traefik.http.routers.gitea.rule=Host(`gitea.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.gitea.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.gitea.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      - "traefik.http.routers.gitea-web.rule=Host(`gitea.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.gitea-web.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+      - "traefik.http.routers.gitea-web.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+      - "traefik.http.routers.gitea-web.service=gitea-backend"
+  
+
+      - "traefik.http.services.gitea-backend.loadbalancer.server.scheme=http"
+      - "traefik.http.services.gitea-backend.loadbalancer.server.port=3000"
+
+
+  db:
+    image: postgres:14-alpine
+    container_name: gitea-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD: gitea
+      POSTGRES_DB: gitea
+
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitea"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+

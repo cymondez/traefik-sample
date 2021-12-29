@@ -1,0 +1,37 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+### ====== Services ====== ###
+services:
+#### ====== whoami ====== ####
+  whoami:
+    image: traefik/whoami
+    command:
+      - --port=443 # Our service listens on 443
+    labels:
+      - "traefik.enable=true"
+
+      # 設定 http 路由 (注意 路由名稱不能跟 Web-secure的重複)
+      - "traefik.http.routers.auto-redirect-web.rule=Host(`auto-redirect.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.auto-redirect-web.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+      # 使用 middleware 導向 https (於 traefik-proxy/docker-compose.yml 內定義的)
+      - "traefik.http.routers.auto-redirect-web.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      # 設定 https 路由 (rule 規則與 web 相同)
+      - "traefik.http.routers.auto-redirect.rule=Host(`auto-redirect.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.auto-redirect.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.auto-redirect.tls=true"
+      - "traefik.http.routers.auto-redirect.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      # 對於支援 '萬用字元' 的domain，必須設定 domains[0] 的 main 與 san
+      # let's encrypts 使用 '萬用字元' 的domain，只能使用 DNS Challenge (DNS-01)
+      # - "traefik.http.routers.whoami-https.tls.domains[0].main=${HOST_DOMAIN}"
+      # - "traefik.http.routers.whoami-https.tls.domains[0].sans=*.${HOST_DOMAIN}"
+
+      - "traefik.http.services.whoami-https.loadbalancer.server.port=443"

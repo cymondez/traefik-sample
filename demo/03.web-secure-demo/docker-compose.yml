@@ -1,0 +1,29 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+### ====== Services ====== ###
+services:
+#### ====== whoami ====== ####
+  whoami:
+    image: traefik/whoami
+    command:
+      - --port=443 # Our service listens on 443
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami-https.rule=Host(`whoami-https.${HOST_DOMAIN}`)"
+
+      - "traefik.http.routers.whoami-https.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.whoami-https.tls=true"
+      - "traefik.http.routers.whoami-https.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      # 對於支援 '萬用字元' 的domain，必須設定 domains[0] 的 main 與 san
+      # let's encrypts 使用 '萬用字元' 的domain，只能使用 DNS Challenge (DNS-01)
+      # - "traefik.http.routers.whoami-https.tls.domains[0].main=${HOST_DOMAIN}"
+      # - "traefik.http.routers.whoami-https.tls.domains[0].sans=*.${HOST_DOMAIN}"
+
+      - "traefik.http.services.whoami-https.loadbalancer.server.port=443"

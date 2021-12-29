@@ -1,0 +1,62 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+  sish:
+    image: antoniomika/sish:v0.2.0
+    container_name: sish
+    restart: unless-stopped
+    stdin_open: true
+
+    ports:
+      - "2222:22"
+    command:
+
+      # - -sish.debug=true
+      - -sish.addr=:22
+      - -sish.http=:80
+
+      # # set https
+      # - -sish.https=:443
+      # - -sish.httpsenabled=true
+      
+      # keys
+      - -sish.keysdir=/pubkeys
+      - -sish.pkloc=/keys/ssh_key
+      
+      - -sish.bindrandom=false
+      - -sish.domain=sish.${HOST_DOMAIN}
+
+      - -sish.forcerandomsubdomain=false
+      - -sish.adminenabled=true
+      - -sish.serviceconsoleenabled=true
+      - -sish.idletimeout=21474836487
+
+
+    volumes:
+      - ./sish/ssl:/ssl
+      - ./sish/keys:/keys
+      - ./sish/pubkeys:/pubkeys
+    labels:
+      - "traefik.enable=true"
+      
+      - "traefik.http.routers.sish.rule=HostRegexp(`sish.${HOST_DOMAIN}`, `{subdomain:.+}.sish.${HOST_DOMAIN}`,)" #Host(`*.sish.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.sish.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+
+
+      # - "traefik.http.routers.sish-websecure.rule=HostRegexp(`sish.${HOST_DOMAIN}`, `{subdomain:.+}.sish.${HOST_DOMAIN}`,)" #Host(`*.sish.${HOST_DOMAIN}`)"
+      # - "traefik.http.routers.sish-websecure.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      # - "traefik.http.routers.sish-websecure.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      # let's encrypts 使用 '萬用字元' 的domain，只能使用 DNS Challenge (DNS-01)
+      # 對於支援 '萬用字元' 的domain，必須設定 domains[0] 的 main 與 san
+      # - "traefik.http.routers.sish-websecure.tls.domains[0].main=${HOST_DOMAIN}"
+      # - "traefik.http.routers.sish-websecure.tls.domains[0].sans=*.${HOST_DOMAIN}"
+
+      - "traefik.http.services.sish.loadbalancer.server.port=80"

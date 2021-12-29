@@ -1,0 +1,48 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+  mocky:
+    # A container that exposes an API to show its IP address
+    image: wangmuy/mocky
+    restart: unless-stopped
+
+    stdin_open: true
+    labels:
+      - "traefik.enable=true"
+
+      # 設定 進入Root 頁面 (需要驗證)
+      - "traefik.http.routers.mocky-web-auth.rule=Host(`mocky.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.mocky-web-auth.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.mocky-web-auth.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      - "traefik.http.routers.mocky-auth.rule=Host(`mocky.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.mocky-auth.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.mocky-auth.middlewares=${TRAEFIK_BASIC_AUTH_MIDDLEWARE_NAME}"
+
+      - "traefik.http.routers.mocky-auth.tls=true"
+      - "traefik.http.routers.mocky-auth.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      - "traefik.http.routers.mocky-auth.service=mocky"
+
+
+      # 設定 API 子頁面 (不需要驗證) 
+      - "traefik.http.routers.mocky-web.rule=Host(`mocky.${HOST_DOMAIN}`) && PathPrefix(`/fs`)"
+      - "traefik.http.routers.mocky-web.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.mocky-web.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      - "traefik.http.routers.mocky.rule=Host(`mocky.${HOST_DOMAIN}`) && PathPrefix(`/fs`)"
+      - "traefik.http.routers.mocky.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+      
+
+      - "traefik.http.routers.mocky.tls=true"
+      - "traefik.http.routers.mocky.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      - "traefik.http.services.mocky.loadbalancer.server.port=9000"

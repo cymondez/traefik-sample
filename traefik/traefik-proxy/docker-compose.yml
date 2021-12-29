@@ -1,0 +1,150 @@
+version: '3.7'
+
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+  traefik:
+    image: traefik:${TRAEFIK_VERSION}     # The official v2.0 Traefik docker image
+    container_name: traefik-proxy
+    restart: unless-stopped
+
+    # 如果您想對接本地端服務，且docker network不是使用 host mode，請務必加入 extra_hosts: host.docker.internal:host-gateway 設定
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+    # 如果 dynamic config 想要套用.env 環境變數，必須設定此行
+    env_file:
+      - ../../.env
+
+    ports:
+
+      # The HTTP port
+      - "${WEB_PORT}:80"
+
+      # The HTTPS port
+      - "${WEB_SECURE_PORT}:443"
+
+      # The Web UI (enabled by --api.insecure=true)
+      - "${TRAEFIK_DASHBOARD_PORT}:8080"
+
+    volumes:
+      # 將 docker.sock 導入以監聽 docker event
+      ## linux 環境下使用
+      - /var/run/docker.sock:/var/run/docker.sock
+      ## windows 環境下使用
+      # - //var/run/docker.sock:/var/run/docker.sock
+
+      # 儲存Let's Encrypts的憑證內容，注意檔案存取權限必須是 600 ( sudo chmod 600 ./acme.json)
+      - ./acme.json:/acme.json:rw
+
+      # 設定 traefik dynamic 資料夾
+      - './dynamic-configs/:/etc/traefik/dynamic/:rw'
+
+    # Enables the web UI and tells Traefik to listen to docker
+    command: 
+      # command line 設定詳細請參考 https://doc.traefik.io/traefik/reference/static-configuration/cli/
+      
+      # -------------------------------------------------------------------------------------------
+      # === 設定 api ===
+      ## 啟用 dashboard
+      - --api.insecure=true
+      ## 啟用 debug模式
+      - --api.debug=true
+      # - --api.dashboard=true #目前版本預設值已經為true，只要 api.insecure=true就等同啟動dashboard
+
+      # -------------------------------------------------------------------------------------------
+      # === 設定 serversTransport ===
+      ## 禁用 SSL 證書驗證 (如果要使用自簽証書請務必設為true)
+      - --serversTransport.insecureSkipVerify=true
+      
+      # -------------------------------------------------------------------------------------------
+      # === 設定 Logs ===
+      ## Common Log
+      - --log.level=${TRAEFIK_LOG_LEVEL}
+
+      # ## Access Log
+      - --accesslog=${TRAEFIK_ACCESS_LOG_ENABLE}
+
+      
+      # -------------------------------------------------------------------------------------------
+      # === 設定 EntryPoints ===
+      ## web (http) 使用
+      - --entryPoints.${WEB_ENTRYPOINT_NAME}.address=:80
+      ## web secure (https) 使用
+      - --entryPoints.${WEB_SECURE_ENTRYPOINT_NAME}.address=:443
+      
+      # -------------------------------------------------------------------------------------------
+      # === 設定 Providers ===
+      ## docker provider
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.defaultRule=Host(`{{ trimPrefix "/" .Name }}.${HOST_DOMAIN}`)
+      - --providers.docker.network=${PROXY_DOCKER_NETWORK}
+
+      ## file provider
+      - --providers.file.watch=true
+      - --providers.file.directory=/etc/traefik/dynamic/
+      
+      # -------------------------------------------------------------------------------------------
+      # === 設定 let's encrypts ===
+      - --certificatesresolvers.${TRAEFIK_CERTRESOLVER_NAME}.acme.email=${TRAEFIK_CERTRESOLVER_ACME_EMAIL}
+      - --certificatesresolvers.${TRAEFIK_CERTRESOLVER_NAME}.acme.storage=acme.json
+
+      ## Let's Encrypts Challange 設定 HTTP (需要 80port)、TLS (需要 443port，本範例採用這個驗證方式)、DNS (需要DNS供應商API支援)三種的其中一種就好
+      ## 詳細組態設定請參考 https://doc.traefik.io/traefik/https/acme/#certificate-resolvers
+      ## DNS 支援列表請參考 https://doc.traefik.io/traefik/https/acme/#providers
+      - --certificatesresolvers.${TRAEFIK_CERTRESOLVER_NAME}.acme.tlschallenge=true
+
+    labels:
+          
+      # -------------------------------------------------------------------------------------------
+      # 套用 traefik label，如果 靜態組態(static config) docker provider exposedByDefault 設定為 false     
+      - "traefik.enable=true"
+      # 如果container使用的docker network 與traefik使用的不同，必須設定 trefik使用的 docker network 
+      - "traefik.docker.network=${PROXY_DOCKER_NETWORK}"
+      
+      
+      # -------------------------------------------------------------------------------------------
+      # ====== 設定 middlewares ======
+
+      # 重新導向至https
+      - "traefik.http.middlewares.${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}.redirectscheme.scheme=https"
+
+      # Basic Auth
+      # - "traefik.http.middlewares.${TRAEFIK_BASIC_AUTH_MIDDLEWARE_NAME}.basicauth.users=${TRAEFIK_BASIC_AUTH_MIDDLEWARE_USERS}"
+      - "traefik.http.middlewares.${TRAEFIK_BASIC_AUTH_MIDDLEWARE_NAME}.basicauth.users=test:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/,test2:$$apr1$$d9hr9HBB$$4HxwgUir3HP4EsggP/QNo0"
+
+      # # 捕捉 http 路由並重新導向  https (對所有服務都生效，如果佈署的服務不會有必須使用 http狀況才使用) 
+      # - "traefik.http.routers.catch-all-http.rule=hostregexp(`{host:.+}`)"
+      # - "traefik.http.routers.catch-all-http.entrypoints=${WEB_ENTRYPOINT_NAME}"
+      # - "traefik.http.routers.catch-all-http.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      
+      # -------------------------------------------------------------------------------------------
+      # ====== 設定 router ======
+
+      ## web 路由設定
+      - "traefik.http.routers.traefik-dashboard-web.rule= Host(`traefik-dashboard.${HOST_DOMAIN}`)"
+      # # 如果無法設定 DNS 上的 domain 為 萬用字元 ( *.${HOST_DOMAIN} ) ，則須改用 subpath的方式進行路由
+      # - "traefik.http.routers.traefik-dashboard-web.rule= Host(`${HOST_DOMAIN}`) && Path(`/traefik-dashboard`)"
+      - "traefik.http.routers.traefik-dashboard-web.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+      ## http redirect to https
+      - "traefik.http.routers.traefik-dashboard-web.middlewares=${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}"
+
+      ## web secure 路由設定
+      - "traefik.http.routers.traefik-dashboard.rule= Host(`traefik-dashboard.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.traefik-dashboard.tls=true"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      ### 套用 Basic Auth
+      - "traefik.http.routers.traefik-dashboard.middlewares=${TRAEFIK_BASIC_AUTH_MIDDLEWARE_NAME}"
+      
+      ### 設定 router 對應 traefik internal service
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"

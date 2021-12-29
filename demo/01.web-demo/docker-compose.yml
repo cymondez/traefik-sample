@@ -1,0 +1,19 @@
+version: '3.7'
+### ====== Network ====== ###
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+### ====== Services ====== ###
+services:
+#### ====== whoami ====== ####
+  whoami:
+    image: traefik/whoami
+    labels:
+
+      - "traefik.enable=true"
+      # router
+      - "traefik.http.routers.whoami-http.rule=Host(`whoami.${HOST_DOMAIN}`)"
+
+      - "traefik.http.services.whoami-http.loadbalancer.server.port=80"

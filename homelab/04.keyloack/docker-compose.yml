@@ -1,0 +1,76 @@
+version: '3.7'
+
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+
+  keycloak:
+    image: jboss/keycloak:15.0.2
+    restart: unless-stopped
+    # 禁用 swap， 凡舉跟驗證有關的服務盡可能不要用到 swap
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - KEYCLOAK_USER=admin
+      - KEYCLOAK_PASSWORD=admin
+
+      - DB_VENDOR=mysql
+      - DB_ADDR=keycloak-db
+      - DB_PORT=3306
+      - DB_DATABASE=keycloak
+      - DB_USER=keycloak
+      - DB_PASSWORD=123456
+
+      - PROXY_ADDRESS_FORWARDING=true # 避免 Mixed Content
+
+    user: root
+
+    volumes:
+      - ./keycloak_data/keycloak:/opt/jboss/keycloak/standalone/data/
+
+    command: -Dkeycloak.profile.feature.docker=enabled -b 0.0.0.0
+    healthcheck:
+        test: ["CMD-SHELL", "curl --fail http://localhost:8080/auth/realms/master"]
+        interval: 30s
+        timeout: 10s
+        retries: 10
+        start_period: 1m
+    depends_on:
+      - keycloak-db
+    labels:
+      - "traefik.enable=true"
+
+
+      - "traefik.http.routers.keycloak-http.rule=Host(`keycloak.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.keycloak-http.entrypoints=${WEB_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.keycloak-http.middlewares=redirect-to-https"
+
+      - "traefik.http.routers.keycloak.rule=Host(`keycloak.${HOST_DOMAIN}`)"
+      - "traefik.http.routers.keycloak.entrypoints=${WEB_SECURE_ENTRYPOINT_NAME}"
+
+      - "traefik.http.routers.keycloak.tls=true"
+      - "traefik.http.routers.keycloak.tls.certresolver=${TRAEFIK_CERTRESOLVER_NAME}"
+
+      - "traefik.http.services.keycloak.loadbalancer.passhostheader=true"
+      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
+      # 避免Mixed Content
+      # - "traefik.http.routers.keycloak.middlewares=keycloak"
+      # - "traefik.http.middlewares.keycloak.headers.customrequestheaders.X-Forwarded-Proto=https"
+  keycloak-db:
+    image: mysql:8
+    restart: unless-stopped
+    volumes:
+        - ./mysql_data:/var/lib/mysql
+    environment:
+        - MYSQL_ROOT_PASSWORD=root
+        - MYSQL_DATABASE=keycloak
+        - MYSQL_USER=keycloak
+        - MYSQL_PASSWORD=123456
+    healthcheck:
+        test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+        timeout: 20s
+        retries: 10

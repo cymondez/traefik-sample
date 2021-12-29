@@ -1,0 +1,48 @@
+version: '3.7'
+
+networks:
+  default:
+    name: ${PROXY_DOCKER_NETWORK}
+    external: true
+
+services:
+  registry:
+    image: registry:2
+    container_name: docker-registry
+    restart: unless-stopped
+
+    volumes:
+      - ./docker_registry_data/storage:/var/lib/registry:rw
+      - ./config/credentials.yml:/etc/docker/registry/config.yml:ro
+      - ./config/user-passwd:/etc/docker/registry/user-passwd:ro
+    
+
+  ui:
+    image: joxit/docker-registry-ui:latest
+    container_name: docker-registry-ui
+    restart: unless-stopped
+
+    environment:
+      - REGISTRY_TITLE='My Docker Registry'
+      - NGINX_PROXY_PASS_URL=http://registry:5000
+      - DELETE_IMAGES=true
+      - SINGLE_REGISTRY=true
+    depends_on:
+      - registry
+    labels:
+      traefik.enable: true
+
+      traefik.http.routers.docker-registry-ui-web.rule: Host(`docker-registry.${HOST_DOMAIN}`)
+      traefik.http.routers.docker-registry-ui-web.entrypoints: ${WEB_ENTRYPOINT_NAME}
+
+      traefik.http.routers.docker-registry-ui-web.middlewares: ${TRAEFIK_REDIRECT_HTTPS_MIDDLEWARE_NAME}
+
+      traefik.http.routers.docker-registry-ui.rule: Host(`docker-registry.${HOST_DOMAIN}`)
+      traefik.http.routers.docker-registry-ui.entrypoints: ${WEB_SECURE_ENTRYPOINT_NAME}
+
+      traefik.http.routers.docker-registry-ui.middlewares: ${TRAEFIK_BASIC_AUTH_MIDDLEWARE_NAME}
+
+      traefik.http.routers.docker-registry-ui.tls: 'true'
+      traefik.http.routers.docker-registry-ui.tls.certresolver: ${TRAEFIK_CERTRESOLVER_NAME}
+
+
